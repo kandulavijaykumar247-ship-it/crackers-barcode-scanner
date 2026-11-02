@@ -55,7 +55,7 @@
     button:disabled {
       background: #aaa;
     }
-
+    
     #stopButton {
       background: #777;
     }
@@ -96,6 +96,10 @@
     <button id="stopButton" onclick="stopScanner()" disabled>
       Stop Scanner
     </button>
+
+<button id="returnButton" onclick="returnToBilling()">
+  ← Return to Agent Billing
+</button>
 
     <div class="message" id="status">
       Ready. Tap Start Rear Camera.
@@ -292,6 +296,20 @@
 
       setStatus("Scanner stopped.");
     }
+    
+async function returnToBilling() {
+  await stopScanner();
+
+  if (window.opener && !window.opener.closed) {
+    window.opener.focus();
+    window.close();
+  } else {
+    setStatus(
+      "Scanner stopped. Please switch back to your Agent Billing tab."
+    );
+  }
+}
+
 
     window.addEventListener("beforeunload", function() {
       if (scanner && scannerRunning) {
