@@ -55,9 +55,13 @@
     button:disabled {
       background: #aaa;
     }
-    
+
     #stopButton {
       background: #777;
+    }
+
+    #returnButton {
+      background: #176b49;
     }
 
     .message {
@@ -97,9 +101,9 @@
       Stop Scanner
     </button>
 
-<button id="returnButton" onclick="returnToBilling()">
-  ← Return to Agent Billing
-</button>
+    <button id="returnButton" onclick="returnToBilling()">
+      ← Return to Agent Billing
+    </button>
 
     <div class="message" id="status">
       Ready. Tap Start Rear Camera.
@@ -126,9 +130,14 @@
   <script>
     let scanner = null;
     let scannerRunning = false;
-    let scanArmed = true;
-    let missedFrames = 0;
-    let lastBarcode = "";
+
+    // Duplicate scan protection
+    let scanLocked = false;
+    let lastBarcodeDetectedAt = 0;
+
+    // Unlock only after 1.5 seconds without barcode detection
+    const UNLOCK_DELAY_MS = 1500;
+
     let audioContext = null;
 
     const statusBox = document.getElementById("status");
@@ -184,14 +193,23 @@
     }
 
     function handleScanSuccess(decodedText) {
-      if (!scannerRunning || !scanArmed) return;
+      if (!scannerRunning) return;
 
       const code = String(decodedText).trim();
       if (!code) return;
 
-      scanArmed = false;
-      missedFrames = 0;
-      lastBarcode = code;
+      const now = Date.now();
+
+      // If locked, record that a barcode is still being detected.
+      // Do not add another product.
+      if (scanLocked) {
+        lastBarcodeDetectedAt = now;
+        return;
+      }
+
+      // Lock immediately before sending the barcode.
+      scanLocked = true;
+      lastBarcodeDetectedAt = now;
 
       barcodeValue.textContent = code;
       resultBox.style.display = "block";
@@ -200,19 +218,21 @@
       sendBarcodeToBilling(code);
 
       setStatus(
-        "Barcode detected. Move it away from the camera to prepare for the next scan."
+        "Product added once. Remove the barcode from the camera view for 1.5 seconds before scanning the next product."
       );
     }
 
     function handleScanMiss() {
-      if (!scannerRunning || scanArmed) return;
+      if (!scannerRunning || !scanLocked) return;
 
-      missedFrames++;
+      const now = Date.now();
+      const timeWithoutBarcode = now - lastBarcodeDetectedAt;
 
-      // Require several frames without a barcode before re-arming.
-      if (missedFrames >= 3) {
-        scanArmed = true;
-        missedFrames = 0;
+      // Unlock only after 1.5 continuous seconds without detection.
+      if (timeWithoutBarcode >= UNLOCK_DELAY_MS) {
+        scanLocked = false;
+        lastBarcodeDetectedAt = 0;
+
         setStatus("Ready for the next barcode.");
       }
     }
@@ -221,7 +241,9 @@
       if (scannerRunning) return;
 
       if (typeof Html5Qrcode === "undefined") {
-        setStatus("Scanner library did not load. Check your internet connection and reload this page.");
+        setStatus(
+          "Scanner library did not load. Check your internet connection and reload this page."
+        );
         return;
       }
 
@@ -254,13 +276,16 @@
         );
 
         scannerRunning = true;
-        scanArmed = true;
-        missedFrames = 0;
+
+        scanLocked = false;
+        lastBarcodeDetectedAt = 0;
 
         startButton.disabled = true;
         stopButton.disabled = false;
 
-        setStatus("Rear camera is running. Point it at a product barcode.");
+        setStatus(
+          "Rear camera is running. Point it at a product barcode."
+        );
 
       } catch (error) {
         scannerRunning = false;
@@ -288,28 +313,28 @@
 
       scanner = null;
       scannerRunning = false;
-      scanArmed = true;
-      missedFrames = 0;
+
+      scanLocked = false;
+      lastBarcodeDetectedAt = 0;
 
       startButton.disabled = false;
       stopButton.disabled = true;
 
       setStatus("Scanner stopped.");
     }
-    
-async function returnToBilling() {
-  await stopScanner();
 
-  if (window.opener && !window.opener.closed) {
-    window.opener.focus();
-    window.close();
-  } else {
-    setStatus(
-      "Scanner stopped. Please switch back to your Agent Billing tab."
-    );
-  }
-}
+    async function returnToBilling() {
+      await stopScanner();
 
+      if (window.opener && !window.opener.closed) {
+        window.opener.focus();
+        window.close();
+      } else {
+        setStatus(
+          "Scanner stopped. Please switch back to your Agent Billing tab."
+        );
+      }
+    }
 
     window.addEventListener("beforeunload", function() {
       if (scanner && scannerRunning) {
