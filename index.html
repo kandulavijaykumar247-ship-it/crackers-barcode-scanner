@@ -60,10 +60,6 @@
       background: #777;
     }
 
-    #returnButton {
-      background: #176b49;
-    }
-
     .message {
       margin-top: 16px;
       padding: 14px;
@@ -116,9 +112,8 @@
     </div>
 
     <p class="small">
-      Keep the barcode inside the camera scanning area.
-      After each successful scan, move the barcode away briefly
-      before scanning the next item.
+      Keep the camera in position. Remove one product and
+      present the next product in the same camera frame.
     </p>
 
     <p class="small">
@@ -131,12 +126,19 @@
     let scanner = null;
     let scannerRunning = false;
 
-    // Duplicate scan protection
-    let scanLocked = false;
+    // Barcode tracking
+    let lastAcceptedBarcode = "";
+    let candidateBarcode = "";
+    let candidateCount = 0;
     let lastBarcodeDetectedAt = 0;
 
-    // Unlock only after 1.5 seconds without barcode detection
+    // Same barcode must disappear for this long
+    // before it can be scanned again consecutively.
     const UNLOCK_DELAY_MS = 1500;
+
+    // Require two consecutive successful readings
+    // before accepting a different barcode.
+    const REQUIRED_CONFIRMATIONS = 2;
 
     let audioContext = null;
 
@@ -172,7 +174,7 @@
         oscillator.start();
         oscillator.stop(audioContext.currentTime + 0.15);
       } catch (error) {
-        // Sound is optional; scanning can continue.
+        // Sound is optional.
       }
     }
 
@@ -192,24 +194,13 @@
       }
     }
 
-    function handleScanSuccess(decodedText) {
-      if (!scannerRunning) return;
+    function acceptBarcode(code) {
+      // Save the accepted barcode before sending it.
+      // This prevents repeated camera frames from adding it again.
+      lastAcceptedBarcode = code;
 
-      const code = String(decodedText).trim();
-      if (!code) return;
-
-      const now = Date.now();
-
-      // If locked, record that a barcode is still being detected.
-      // Do not add another product.
-      if (scanLocked) {
-        lastBarcodeDetectedAt = now;
-        return;
-      }
-
-      // Lock immediately before sending the barcode.
-      scanLocked = true;
-      lastBarcodeDetectedAt = now;
+      candidateBarcode = "";
+      candidateCount = 0;
 
       barcodeValue.textContent = code;
       resultBox.style.display = "block";
@@ -218,23 +209,69 @@
       sendBarcodeToBilling(code);
 
       setStatus(
-        "Product added once. Remove the barcode from the camera view for 1.5 seconds before scanning the next product."
+        "Product added. Keep the camera in position and present the next product."
       );
     }
 
-    function handleScanMiss() {
-      if (!scannerRunning || !scanLocked) return;
+    function handleScanSuccess(decodedText) {
+      if (!scannerRunning) return;
+
+      const code = String(decodedText).trim();
+      if (!code) return;
 
       const now = Date.now();
-      const timeWithoutBarcode = now - lastBarcodeDetectedAt;
 
-      // Unlock only after 1.5 continuous seconds without detection.
-      if (timeWithoutBarcode >= UNLOCK_DELAY_MS) {
-        scanLocked = false;
+      // Every successful barcode reading updates this timer.
+      lastBarcodeDetectedAt = now;
+
+      // Same barcode: ignore repeated camera readings.
+      if (code === lastAcceptedBarcode) {
+        candidateBarcode = "";
+        candidateCount = 0;
+        return;
+      }
+
+      // Different barcode detected.
+      // Confirm it twice to avoid accepting an occasional
+      // incorrect reading from a changing camera frame.
+      if (code === candidateBarcode) {
+        candidateCount++;
+      } else {
+        candidateBarcode = code;
+        candidateCount = 1;
+      }
+
+      if (candidateCount >= REQUIRED_CONFIRMATIONS) {
+        acceptBarcode(code);
+      } else {
+        setStatus("New barcode detected. Confirming product...");
+      }
+    }
+
+    function handleScanMiss() {
+      if (!scannerRunning) return;
+
+      const now = Date.now();
+
+      // Only reset the previously accepted barcode after
+      // 1.5 seconds without any successful barcode reading.
+      if (
+        lastAcceptedBarcode &&
+        lastBarcodeDetectedAt > 0 &&
+        now - lastBarcodeDetectedAt >= UNLOCK_DELAY_MS
+      ) {
+        lastAcceptedBarcode = "";
+        candidateBarcode = "";
+        candidateCount = 0;
         lastBarcodeDetectedAt = 0;
 
         setStatus("Ready for the next barcode.");
+        return;
       }
+
+      // Clear an incomplete candidate after a missed frame.
+      candidateBarcode = "";
+      candidateCount = 0;
     }
 
     async function startScanner() {
@@ -277,7 +314,9 @@
 
         scannerRunning = true;
 
-        scanLocked = false;
+        lastAcceptedBarcode = "";
+        candidateBarcode = "";
+        candidateCount = 0;
         lastBarcodeDetectedAt = 0;
 
         startButton.disabled = true;
@@ -314,7 +353,9 @@
       scanner = null;
       scannerRunning = false;
 
-      scanLocked = false;
+      lastAcceptedBarcode = "";
+      candidateBarcode = "";
+      candidateCount = 0;
       lastBarcodeDetectedAt = 0;
 
       startButton.disabled = false;
