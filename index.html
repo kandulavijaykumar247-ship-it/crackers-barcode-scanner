@@ -1,59 +1,115 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Crackers Barcode Scanner</title>
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-height: 100%;
+      background: #f3f6f4;
+    }
 
     body {
       margin: 0;
-      padding: 20px;
+      padding: 16px;
       font-family: Arial, sans-serif;
       background: #f3f6f4;
       color: #222;
     }
 
     .container {
+      width: 100%;
       max-width: 520px;
-      margin: 20px auto;
+      margin: 16px auto;
       padding: 22px;
-      background: white;
+      background: #fff;
       border-radius: 18px;
       box-shadow: 0 3px 15px #00000012;
     }
 
     h2 {
-      margin-top: 0;
+      margin: 0 0 20px;
       color: #176b49;
       text-align: center;
+      line-height: 1.2;
     }
 
+    /*
+      Keep the camera window a predictable size on every phone.
+      The height is based on the visible screen, with minimum and
+      maximum limits so unusually tall camera streams cannot stretch it.
+    */
     #reader {
-      width: 100%;
-      overflow: hidden;
+      position: relative;
+      width: 100% !important;
+      height: clamp(280px, 48vh, 440px) !important;
+      height: clamp(280px, 48svh, 440px) !important;
+      min-height: 280px;
+      max-height: 440px;
+      overflow: hidden !important;
+      border: 0 !important;
       border-radius: 12px;
+      background: #111;
+    }
+
+    /* Keep the camera stream inside the fixed preview window. */
+    #reader #reader__scan_region {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 100% !important;
+      height: 100% !important;
+      min-height: 0 !important;
+      overflow: hidden !important;
+    }
+
+    #reader video {
+      display: block !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+      object-fit: contain !important;
+      object-position: center center !important;
+    }
+
+    #reader canvas {
+      max-width: 100% !important;
+    }
+
+    /* The library's optional dashboard should not enlarge the preview. */
+    #reader #reader__dashboard {
+      max-width: 100% !important;
     }
 
     button {
+      display: block;
       width: 100%;
-      padding: 16px;
+      min-height: 56px;
+      padding: 15px 12px;
       margin-top: 12px;
       border: 0;
       border-radius: 10px;
       background: #176b49;
-      color: white;
+      color: #fff;
       font-size: 17px;
       font-weight: bold;
+      line-height: 1.2;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
     }
 
     button:disabled {
       background: #aaa;
+      cursor: not-allowed;
     }
 
     #stopButton {
@@ -79,6 +135,49 @@
       color: #666;
       font-size: 14px;
       line-height: 1.5;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+
+      .container {
+        margin: 8px auto;
+        padding: 18px;
+        border-radius: 16px;
+      }
+
+      h2 {
+        font-size: clamp(24px, 6vw, 32px);
+        margin-bottom: 18px;
+      }
+
+      #reader {
+        height: clamp(260px, 44vh, 390px) !important;
+        height: clamp(260px, 44svh, 390px) !important;
+        min-height: 260px;
+        max-height: 390px;
+      }
+
+      button {
+        min-height: 54px;
+        font-size: 16px;
+      }
+    }
+
+    @media (max-height: 650px) {
+      #reader {
+        height: 260px !important;
+        min-height: 260px;
+      }
+
+      @media (max-width: 600px) {
+        #reader {
+          height: 240px !important;
+          min-height: 240px;
+        }
+      }
     }
   </style>
 </head>
@@ -274,6 +373,21 @@
       candidateCount = 0;
     }
 
+    function getBarcodeBox(viewfinderWidth, viewfinderHeight) {
+      // Keep the scan guide responsive on narrow and wide phones.
+      const width = Math.max(
+        180,
+        Math.min(320, Math.floor(viewfinderWidth * 0.82))
+      );
+
+      const height = Math.max(
+        90,
+        Math.min(180, Math.floor(width * 0.54), Math.floor(viewfinderHeight * 0.45))
+      );
+
+      return { width: width, height: height };
+    }
+
     async function startScanner() {
       if (scannerRunning) return;
 
@@ -305,8 +419,7 @@
           { facingMode: "environment" },
           {
             fps: 10,
-            qrbox: { width: 280, height: 150 },
-            aspectRatio: 1.5
+            qrbox: getBarcodeBox
           },
           handleScanSuccess,
           handleScanMiss
